@@ -7,10 +7,12 @@ const MODEL_NAME = "gemini-1.5-flash";
 
 // Get history messages in the right format for Gemini
 export const formatMessagesForGemini = (messages: Message[]) => {
-  return messages.map(message => ({
-    role: message.role === 'user' ? 'user' : message.role === 'assistant' ? 'model' : 'system',
-    parts: [{ text: message.content }]
-  }));
+  return messages
+    .filter(message => message.role !== 'system')
+    .map(message => ({
+      role: message.role === 'user' ? 'user' : 'model',
+      parts: [{ text: message.content }]
+    }));
 };
 
 // Helper function to create system message
@@ -49,12 +51,26 @@ export const generateChatResponse = async (messages: Message[], apiKey: string):
     throw new Error("API key is required");
   }
 
-  // Always include system message first
+  // Create system message for context, but don't send it directly to Gemini
   const systemMessage = createSystemMessage();
-  const allMessages = [systemMessage, ...messages];
   
-  // Format messages for Gemini API
-  const formattedMessages = formatMessagesForGemini(allMessages);
+  // Filter out existing system messages from the conversation
+  const nonSystemMessages = messages.filter(msg => msg.role !== "system");
+  
+  // For the first user message, prepend the system instructions
+  if (nonSystemMessages.length > 0 && nonSystemMessages[0].role === "user") {
+    // Clone the first user message to avoid mutating the original message
+    const firstUserMessage = { ...nonSystemMessages[0] };
+    
+    // Prepend system instructions to the first user message content
+    firstUserMessage.content = `[Instructions for you: ${systemMessage.content}]\n\nUser's question: ${firstUserMessage.content}`;
+    
+    // Replace the first message with our modified version
+    nonSystemMessages[0] = firstUserMessage;
+  }
+  
+  // Format messages for Gemini API (no system messages, just user and model)
+  const formattedMessages = formatMessagesForGemini(nonSystemMessages);
   
   try {
     const response = await fetch(
