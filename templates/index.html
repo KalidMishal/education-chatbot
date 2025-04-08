@@ -1,0 +1,232 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lanka Edu AI - Sri Lanka Education Counselor</title>
+    <meta name="description" content="AI-powered education counselor for Sri Lankan students and parents">
+    <meta name="author" content="Lanka Edu AI">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="min-h-screen flex flex-col bg-gradient">
+        <header>
+            <div class="container">
+                <h1>
+                    <span class="star">&#9733;</span>
+                    {{ app_name }}
+                </h1>
+                <div class="tagline">
+                    Sri Lankan Education Counselor
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <div class="chat-container">
+                {% if not api_key %}
+                    <div id="api-key-form">
+                        <h2>Enter your Gemini API key</h2>
+                        <p>To use Lanka Edu AI, please enter your Google Gemini API key.</p>
+                        <form id="key-form">
+                            <input type="password" id="api-key" placeholder="Enter your Gemini API key">
+                            <button type="submit" id="submit-key">Submit</button>
+                        </form>
+                    </div>
+                {% else %}
+                    <div id="chat-interface">
+                        <div id="chat-messages">
+                            {% for message in messages %}
+                                <div class="message {{ 'user-message' if message.role == 'user' else 'assistant-message' }}">
+                                    <div class="message-content">{{ message.content }}</div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        <div id="typing-indicator" class="hidden">
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
+                        <div id="chat-input-container">
+                            <form id="chat-form">
+                                <input type="text" id="user-input" placeholder="Type your question...">
+                                <button type="submit" id="send-message">Send</button>
+                            </form>
+                            <div class="button-group">
+                                <button id="clear-chat">Clear Chat</button>
+                                <button id="change-api-key">Change API Key</button>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            </div>
+        </main>
+
+        <footer>
+            <div class="container">
+                <p>{{ app_name }} &copy; {{ now.year }} | Educational Assistant for Sri Lanka</p>
+            </div>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Scroll to bottom of chat
+            function scrollToBottom() {
+                const chatMessages = document.getElementById('chat-messages');
+                if (chatMessages) {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+            }
+            scrollToBottom();
+            
+            // API Key form handling
+            const keyForm = document.getElementById('key-form');
+            if (keyForm) {
+                keyForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const apiKey = document.getElementById('api-key').value.trim();
+                    if (!apiKey) {
+                        alert('Please enter your API key');
+                        return;
+                    }
+                    
+                    fetch('/submit_api_key', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({
+                            'api_key': apiKey
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.reload();
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error submitting API key');
+                    });
+                });
+            }
+            
+            // Chat form handling
+            const chatForm = document.getElementById('chat-form');
+            const typingIndicator = document.getElementById('typing-indicator');
+            
+            if (chatForm) {
+                chatForm.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const userInput = document.getElementById('user-input');
+                    const message = userInput.value.trim();
+                    
+                    if (!message) {
+                        return;
+                    }
+                    
+                    // Add user message immediately
+                    const chatMessages = document.getElementById('chat-messages');
+                    const userMessage = document.createElement('div');
+                    userMessage.className = 'message user-message';
+                    userMessage.innerHTML = `<div class="message-content">${message}</div>`;
+                    chatMessages.appendChild(userMessage);
+                    scrollToBottom();
+                    
+                    // Clear input
+                    userInput.value = '';
+                    userInput.disabled = true;
+                    
+                    // Show typing indicator
+                    typingIndicator.classList.remove('hidden');
+                    scrollToBottom();
+                    
+                    // Send message to server
+                    fetch('/send_message', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                        },
+                        body: new URLSearchParams({
+                            'message': message
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        // Hide typing indicator
+                        typingIndicator.classList.add('hidden');
+                        
+                        if (data.error) {
+                            alert(data.error);
+                        } else {
+                            // Add assistant message
+                            const assistantMessage = document.createElement('div');
+                            assistantMessage.className = 'message assistant-message';
+                            assistantMessage.innerHTML = `<div class="message-content">${data.message.content}</div>`;
+                            chatMessages.appendChild(assistantMessage);
+                            scrollToBottom();
+                        }
+                        
+                        // Re-enable input
+                        userInput.disabled = false;
+                        userInput.focus();
+                    })
+                    .catch(error => {
+                        console.error('Error:', error);
+                        alert('Error sending message');
+                        typingIndicator.classList.add('hidden');
+                        userInput.disabled = false;
+                    });
+                });
+            }
+            
+            // Clear chat button
+            const clearChatButton = document.getElementById('clear-chat');
+            if (clearChatButton) {
+                clearChatButton.addEventListener('click', function() {
+                    if (confirm('Are you sure you want to clear the chat?')) {
+                        fetch('/clear_chat', {
+                            method: 'POST'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                window.location.reload();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('Error clearing chat');
+                        });
+                    }
+                });
+            }
+            
+            // Change API key button
+            const changeApiKeyButton = document.getElementById('change-api-key');
+            if (changeApiKeyButton) {
+                changeApiKeyButton.addEventListener('click', function() {
+                    if (confirm('Are you sure you want to change your API key?')) {
+                        fetch('/change_api_key', {
+                            method: 'POST'
+                        })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.success) {
+                                window.location.reload();
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error:', error);
+                            alert('Error changing API key');
+                        });
+                    }
+                });
+            }
+        });
+    </script>
+</body>
+</html>
